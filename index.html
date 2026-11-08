@@ -1,0 +1,1093 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Dice Combat Prototype</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<script src="https://unpkg.com/lucide@0.468.0/dist/umd/lucide.min.js"></script>
+<style>
+:root{
+  color-scheme:light;
+  --bg:#fbfbf9; --ink:#222; --muted:#888; --line:#e2e1dc; --tray:#f0efea; --hl:#e8a317; --red:#c0392b;
+  --c-fighter:#c4574c; --c-paladin:#c49a2c; --c-wizard:#7a5fc9; --c-merchant:#3b9373;
+}
+*{box-sizing:border-box}
+body{background:var(--bg);color:var(--ink);font:14px/1.4 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+button{font:inherit;color:inherit}
+.page{max-width:1080px;margin:0 auto;padding-block:14px 40px;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));display:flex;flex-direction:column;gap:22px}
+.top{display:flex;gap:12px;color:var(--muted);font-size:13px}
+.ico{display:inline-grid;place-items:center;line-height:0;vertical-align:-2px}
+.ico svg{width:14px;height:14px}
+
+/* enemies */
+.enemies{display:flex;justify-content:center;gap:12px;flex-wrap:wrap}
+.enemy{width:160px;background:#fff;border:1px solid var(--line);border-radius:10px;padding:8px 10px 8px 6px;display:flex;align-items:center;gap:6px;cursor:default}
+.enemy .spot{width:54px;height:54px;flex:none}
+.e-name{font-weight:600}
+.e-hp{font-size:12px;color:var(--muted);font-variant-numeric:tabular-nums}
+.e-intent{font-size:12px;margin-top:2px;min-height:17px}
+.e-intent{display:flex;flex-wrap:wrap;gap:2px 10px}
+.e-intent .attack{color:var(--red)}
+.e-intent .idle{color:var(--muted)}
+.spots{display:flex;flex:none}
+.enemy.boss{width:auto;min-width:300px;flex-direction:column;align-items:center;gap:4px;padding:10px 16px;border-width:2px;text-align:center}
+.enemy.boss .e-intent{justify-content:center}
+.enemy.boss .e-name{font-size:16px}
+.btn.big{padding:10px 22px;font-size:15px}
+.enemy.dead{opacity:.45}
+.enemy.can-hit,.enemy.can-target{cursor:pointer;border-color:var(--hl);box-shadow:0 0 0 2px var(--hl)}
+.enemy.attacking{border-color:var(--red);box-shadow:0 0 0 2px var(--red)}
+
+/* party */
+.party{display:flex;justify-content:center;gap:14px;flex-wrap:wrap}
+.member{display:flex;align-items:flex-end;gap:4px}
+.cardcol{display:flex;flex-direction:column;gap:6px}
+.threats{height:24px;display:flex;gap:4px;justify-content:center;align-items:flex-end}
+.threat{position:relative;background:var(--red);color:#fff;font-size:12px;font-weight:600;padding:2px 8px;border-radius:6px;display:flex;align-items:center;gap:4px;white-space:nowrap}
+.threat::after{content:"";position:absolute;left:50%;bottom:-5px;margin-left:-5px;border:5px solid transparent;border-bottom:0;border-top-color:var(--red)}
+.threat .ico svg{width:12px;height:12px}
+.threat.blocked{background:#dfe8f4;color:#2a5a9a}
+.threat.blocked::after{border-top-color:#dfe8f4}
+.threat.now{animation:pulse .5s ease-in-out infinite alternate}
+@keyframes pulse{to{transform:translateY(-3px)}}
+.hwrap{display:flex;flex-direction:column;align-items:center;gap:4px;padding-bottom:70px}
+.hlabel{font-size:12px;color:var(--muted);display:flex;align-items:center;gap:3px}
+.hlabel .ico svg{width:12px;height:12px;color:#c0392b}
+.member.ko{opacity:.4}
+.card{--c:#999;width:170px;height:238px;background:#fff;border:3px solid var(--c);border-radius:12px;padding:8px;display:flex;flex-direction:column;gap:7px;position:relative;box-shadow:0 2px 8px rgba(0,0,0,.06)}
+.card-top{display:flex;justify-content:space-between;align-items:baseline}
+.card-name{font-weight:600;font-size:15px}
+.card-lv{font-size:12px;color:var(--muted)}
+.card-dice{flex:1;border-radius:7px;background:color-mix(in srgb,var(--c) 13%,#fff);position:relative}
+.card-ability{font-size:12px;line-height:1.35;min-height:50px;padding:2px 3px;border-radius:6px}
+.card-ability b{font-weight:600}
+.downed{position:absolute;inset:auto 0 6px;text-align:center;font-size:12px;color:var(--red)}
+.card.can-block,.card.can-target{cursor:pointer;box-shadow:0 0 0 3px var(--hl)}
+.card-dice.can-buy,.card-ability.can-ability{cursor:pointer;outline:2.5px solid var(--hl);outline-offset:-1px}
+.card.hit{animation:shake .35s}
+.hspot{width:62px;height:62px;flex:none;border-radius:50%;border:1.5px dashed #e2bdb7;background:#fff}
+.hspot.empty{border-color:var(--line)}
+@keyframes shake{0%,100%{transform:none}25%{transform:translateX(-5px)}50%{transform:translateX(4px)}75%{transform:translateX(-2px)}}
+
+/* table */
+.table{display:grid;grid-template-columns:150px minmax(0,1fr) 120px;gap:12px}
+.discard{border:1.5px dashed #d6d5cf;border-radius:14px;min-height:160px;position:relative}
+.label{position:absolute;bottom:6px;left:0;right:0;text-align:center;font-size:12px;color:var(--muted)}
+.tray{background:var(--tray);border-radius:16px;min-height:160px;padding:14px;display:flex;flex-wrap:wrap;gap:8px;align-items:center;justify-content:center;box-shadow:inset 0 2px 8px rgba(0,0,0,.07)}
+.slot{width:80px;height:80px;border-radius:50%;border:0;background:transparent;cursor:pointer;padding:0}
+.slot.sel{box-shadow:0 0 0 3px var(--hl)}
+.slot.src{box-shadow:0 0 0 3px var(--hl)}
+.slot.rr{box-shadow:0 0 0 2px var(--hl);opacity:1}
+.result{text-align:center;display:flex;flex-direction:column;gap:8px;align-items:center}
+.result p{margin:0}
+.result .stats{font-size:12px;color:var(--muted)}
+.cup{border:0;background:none;padding:0 0 22px;position:relative;display:flex;align-items:center;justify-content:center;cursor:default;border-radius:14px}
+.cup svg{width:96px;height:auto}
+.cup.can-upgrade{cursor:pointer;box-shadow:0 0 0 2.5px var(--hl)}
+.bar{display:flex;gap:10px;align-items:center;justify-content:space-between;flex-wrap:wrap;min-height:36px}
+.hint{margin:0;color:#555;flex:1 1 300px}
+.btns{display:flex;gap:8px}
+.btn{border:1px solid #d4d3cd;background:#fff;border-radius:8px;padding:7px 12px;cursor:pointer}
+.btn:hover:not(:disabled){border-color:#aaa}
+.btn:disabled{opacity:.4;cursor:default}
+.btn.main{background:var(--ink);border-color:var(--ink);color:#fff}
+:focus-visible{outline:2px solid var(--hl);outline-offset:2px}
+.foot{display:flex;gap:24px;flex-wrap:wrap;font-size:13px;color:var(--muted);align-items:flex-start}
+.foot summary{cursor:pointer}
+.log{max-height:220px;overflow:auto;margin-top:6px;display:flex;flex-direction:column;gap:3px;max-width:520px}
+.settings{display:grid;grid-template-columns:auto 60px;gap:6px 10px;align-items:center;margin:8px 0}
+.settings input{width:60px;padding:3px 5px;border:1px solid #d4d3cd;border-radius:6px;background:#fff;font:inherit}
+#dice3d{position:fixed;inset:0;width:100%;height:100%;pointer-events:none;z-index:5}
+.busy .enemies,.busy .party,.busy .table{pointer-events:none}
+
+@media (max-width:640px){
+  .member{flex-direction:column;align-items:center}
+  .hwrap{padding-bottom:0;flex-direction:row}
+  .card{width:158px;height:226px}
+  .table{grid-template-columns:64px minmax(0,1fr) 64px;gap:8px}
+  .cup svg{width:58px}
+  .slot{width:64px;height:64px}
+  .discard,.tray{min-height:130px}
+}
+@media (prefers-reduced-motion: reduce){.card.hit{animation:none}}
+</style>
+</head>
+<body>
+
+<div class="page" id="page">
+  <div class="top" id="top"></div>
+  <section class="enemies" id="enemies" aria-label="Enemies"></section>
+  <section class="party" id="party" aria-label="Party"></section>
+  <section class="table" aria-label="Dice">
+    <div class="discard" id="discard" data-anchor="discard"><span class="label" id="discard-label">discard</span></div>
+    <div class="tray" id="tray"></div>
+    <button type="button" class="cup" id="cup" data-act="cup" data-anchor="cup" aria-label="Dice cup">
+      <svg viewBox="0 0 100 112" aria-hidden="true">
+        <path d="M8 18 L20 100 Q50 112 80 100 L92 18 Z" fill="#7b5139"/>
+        <path d="M14 58 Q50 70 86 58" stroke="#5f3d2a" stroke-width="3" fill="none"/>
+        <ellipse cx="50" cy="18" rx="42" ry="12" fill="#5f3d2a"/>
+        <ellipse cx="50" cy="18" rx="35" ry="8.5" fill="#2c1c13"/>
+      </svg>
+      <span class="label" id="cup-label"></span>
+    </button>
+  </section>
+  <div class="bar">
+    <p class="hint" id="hint"></p>
+    <div class="btns" id="btns"></div>
+  </div>
+  <div class="foot">
+    <details><summary>Log</summary><div class="log" id="log"></div></details>
+    <details><summary>Settings</summary>
+      <div class="settings">
+        <label for="set-enemies">Enemies</label><input id="set-enemies" type="number" min="1" max="6" value="4">
+        <label for="set-health">Enemy health</label><input id="set-health" type="number" min="1" max="40" value="5">
+        <label for="set-level">Party level</label><input id="set-level" type="number" min="0" max="6" value="3">
+        <label for="set-draw">Starting draw</label><input id="set-draw" type="number" min="1" max="10" value="4">
+        <label for="set-cost">Die cost</label><input id="set-cost" type="number" min="1" max="8" value="2">
+        <label for="set-base">Base dice</label><input id="set-base" type="number" min="1" max="12" value="6">
+        <label for="set-bossHealth">Monster health</label><input id="set-bossHealth" type="number" min="1" max="80" value="15">
+        <label for="set-bossDice">Monster dice (0 for no wave 2)</label><input id="set-bossDice" type="number" min="0" max="8" value="5">
+      </div>
+      <button type="button" class="btn" data-act="newfight">New fight</button>
+    </details>
+  </div>
+</div>
+<canvas id="dice3d" aria-hidden="true"></canvas>
+
+<script>
+/* ================= Config =================
+   A face is a list of symbols ([] is blank). */
+const BASE_FACES  = [['speech'],['speech'],['sword'],['shield'],['magic'],['reroll']];
+const ENEMY_FACES = [[],[],['sword'],['sword'],['shield'],['shield']];
+const BOSS_FACES  = [['sword','sword'],['sword','sword'],['sword'],['shield','shield'],['shield'],[]];
+const HEALTH_SIZES = [8, 6, 4];
+const SHRINK_FACES = 2;
+const HEALTH_FACES = {};
+HEALTH_SIZES.forEach(n => HEALTH_FACES[n] = Array.from({length:n}, (_, i) => i < SHRINK_FACES ? ['crack'] : []));
+
+const SYM = {
+  sword:{icon:'sword', color:'#a5302a'}, shield:{icon:'shield', color:'#225596'},
+  speech:{icon:'message-circle', color:'#0d7564'}, magic:{icon:'sparkles', color:'#7a3db5'},
+  reroll:{icon:'refresh-cw', color:'#474d55'}, special:{icon:'asterisk', color:'#b35506'},
+  crack:{icon:'heart-crack', color:'#c0392b'},
+};
+
+/* Placeholder character dice and abilities */
+const CLASSES = {
+  fighter:{ name:'Fighter', color:'var(--c-fighter)', body:'#f4cfc9',
+    faces:[['sword'],['sword'],['sword','sword'],['sword','sword'],['shield'],['special'],['speech'],['magic']],
+    ability:{ name:'Power strike', text:'2 damage to an enemy, ignoring shields.', target:'enemy',
+      usable:() => aliveEnemies().length > 0,
+      run:({c, enemy}) => { const r = damageEnemy(enemy, 2, true); log(`${c.name}: Power strike on ${enemy.name} for ${r.dealt}.`); } } },
+  paladin:{ name:'Paladin', color:'var(--c-paladin)', body:'#f2e1ad',
+    faces:[['sword'],['shield'],['shield','shield'],['sword','shield'],['special'],['special'],['speech'],['magic']],
+    ability:{ name:'Mend', text:"Grow an ally's health die one size.", target:'ally',
+      canTarget:a => !a.ko && (a.downed || a.hpIdx > 0),
+      usable:() => S.party.some(a => !a.ko && (a.downed || a.hpIdx > 0)),
+      run:({c, ally}) => {
+        if (ally.downed) { ally.downed = false; ally.hpIdx = HEALTH_SIZES.length - 1; } else ally.hpIdx--;
+        ally.hface = blankFace(HEALTH_SIZES[ally.hpIdx]);
+        log(`${c.name} mends ${ally.name}: back to a d${HEALTH_SIZES[ally.hpIdx]}.`);
+      } } },
+  wizard:{ name:'Wizard', color:'var(--c-wizard)', body:'#dcd2f6',
+    faces:[['magic'],['magic'],['sword'],['sword','sword'],['special'],['special'],['speech'],['speech']],
+    ability:{ name:'Fireball', text:'1 damage to every enemy. Shields block it.', target:'none',
+      usable:() => aliveEnemies().length > 0,
+      run:({c}) => { const hits = aliveEnemies().map(e => damageEnemy(e, 1, false).dealt).reduce((a, b) => a + b, 0); log(`${c.name}: Fireball, ${hits} damage in total.`); } } },
+  merchant:{ name:'Merchant', color:'var(--c-merchant)', body:'#c8e9d9',
+    faces:[['speech'],['speech'],['speech','speech'],['speech','speech'],['special'],['shield'],['sword'],['magic']],
+    ability:{ name:'Bargain', text:'Draw and roll one more die.', target:'none',
+      usable:() => S.dice.some(d => d.loc === 'bag' || d.loc === 'used'),
+      run: async ({c}) => { log(`${c.name}: Bargain, one more die.`); await drawDice(1); } } },
+};
+const PARTY_ORDER = ['fighter','paladin','wizard','merchant'];
+const DEFAULTS = {enemies:4, health:5, bossHealth:15, bossDice:5, level:3, draw:4, cost:2, base:6};
+
+/* ================= Utilities ================= */
+const rand = n => Math.floor(Math.random() * n);
+const reduced = () => !!(window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches);
+const sleep = ms => new Promise(r => setTimeout(r, reduced() ? Math.min(ms, 40) : ms));
+const plural = (n, w, p) => `${n} ${n === 1 ? w : (p || w + 's')}`;
+const blankFace = sides => SHRINK_FACES + rand(sides - SHRINK_FACES);
+
+const ICON_NAMES = ['sword','shield','message-circle','sparkles','refresh-cw','asterisk','heart-crack','heart','circle-slash'];
+const ICON_HTML = {}, ICON_SVG = {};
+function buildIcons(){
+  const host = document.createElement('div');
+  host.hidden = true;
+  host.innerHTML = ICON_NAMES.map(n => `<i data-lucide="${n}"></i>`).join('');
+  document.body.appendChild(host);
+  try { window.lucide.createIcons({icons: window.lucide.icons, attrs:{'stroke-width':2.4}}); } catch (e) { console.warn('Icons unavailable', e); }
+  [...host.children].forEach((el, i) => {
+    if (el.tagName.toLowerCase() !== 'svg') return;
+    ICON_HTML[ICON_NAMES[i]] = el.outerHTML;
+    ICON_SVG[ICON_NAMES[i]] = new XMLSerializer().serializeToString(el);
+  });
+  host.remove();
+}
+const icon = n => `<span class="ico" aria-hidden="true">${ICON_HTML[n] || ''}</span>`;
+const imgCache = {};
+function iconImg(name, color){
+  const key = name + color;
+  if (key in imgCache) return imgCache[key];
+  const svg = ICON_SVG[name];
+  if (!svg) return (imgCache[key] = null);
+  const cut = svg.indexOf('>');
+  let root = svg.slice(0, cut).replace(/\s(width|height)="[^"]*"/g, '').replace('<svg', '<svg width="96" height="96"');
+  if (!/xmlns=/.test(root)) root = root.replace('<svg', '<svg xmlns="http://www.w3.org/2000/svg"');
+  const img = new Image();
+  img.onload = () => { dirty = true; };
+  img.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent((root + svg.slice(cut)).replace(/currentColor/g, color));
+  return (imgCache[key] = img);
+}
+
+/* ================= Game state ================= */
+let S = null;
+let gen = 0;
+
+function readSettings(){
+  const v = (id, d, lo, hi) => { const n = parseInt(document.getElementById(id).value, 10); return Number.isFinite(n) ? Math.min(hi, Math.max(lo, n)) : d; };
+  return { enemies:v('set-enemies',4,1,6), health:v('set-health',5,1,40), level:v('set-level',3,0,6), draw:v('set-draw',4,1,10), cost:v('set-cost',2,1,8), base:v('set-base',6,1,12), bossHealth:v('set-bossHealth',15,1,80), bossDice:v('set-bossDice',5,0,8) };
+}
+function loadSettings(){
+  let saved = null;
+  try { saved = JSON.parse(localStorage.getItem('dice-proto-settings') || 'null'); } catch (e) {}
+  const s = {...DEFAULTS, ...(saved || {})};
+  for (const k of Object.keys(DEFAULTS)) document.getElementById('set-' + k).value = s[k];
+}
+function saveSettings(cfg){ try { localStorage.setItem('dice-proto-settings', JSON.stringify(cfg)); } catch (e) {} }
+
+const dieById = id => S.dice.find(d => d.id === id);
+const charById = id => S.party.find(c => c.id === id);
+const enemyById = id => S.enemies.find(e => e.id === id);
+const aliveEnemies = () => S.enemies.filter(e => !e.dead);
+const livingParty = () => S.party.filter(c => !c.ko);
+const pileOff = () => [(Math.random() - .5) * .55, (Math.random() - .5) * .5 - .06];
+function addDie(owner, faces, sides, loc){ const d = {id:S.nextId++, owner, faces, sides, face:0, loc, spent:[], pileOff:pileOff()}; S.dice.push(d); return d; }
+function log(text){ S.log.push({round:S.round, text}); }
+
+function newFight(cfg){
+  gen++;
+  resetVisuals();
+  S = {
+    cfg, round:0, phase:'ready', drawSize:cfg.draw, dice:[], tray:[], selection:[], mode:null, blocks:{},
+    log:[], nextId:1, over:null, busy:false, resolving:null,
+    stats:{dealt:0, hits:0, bought:0, upgrades:0},
+    party: PARTY_ORDER.map(k => ({id:k, cls:k, name:CLASSES[k].name, level:cfg.level, unbought:cfg.level, hpIdx:0, hface:blankFace(8),
+      downed:false, ko:false, heap:makeHeap(cfg.level)})),
+    wave:1,
+    enemies: Array.from({length:cfg.enemies}, (_, i) => makeEnemy('e' + i, 'Enemy ' + 'ABCDEF'[i], cfg.health, ENEMY_FACES, 1)),
+  };
+  for (let i = 0; i < cfg.base; i++) addDie('base', BASE_FACES, 6, 'bag');
+  render({quiet:true});
+}
+function makeEnemy(id, name, hp, faces, nDice, boss = false){
+  return {id, name, hp, maxHp:hp, faces, nDice, boss, dead:false, rolls:null, shields:0, swords:[]};
+}
+function nextWave(){
+  S.wave = 2;
+  S.enemies = [makeEnemy('boss', 'Monster', S.cfg.bossHealth, BOSS_FACES, S.cfg.bossDice, true)];
+  S.phase = 'wave';
+  S.busy = false;
+  log('Wave 2: a monster arrives.');
+  render();
+}
+function randQuat(){
+  const u1 = Math.random(), u2 = Math.random(), u3 = Math.random();
+  return [Math.sqrt(1-u1)*Math.sin(2*Math.PI*u2), Math.sqrt(1-u1)*Math.cos(2*Math.PI*u2), Math.sqrt(u1)*Math.sin(2*Math.PI*u3), Math.sqrt(u1)*Math.cos(2*Math.PI*u3)];
+}
+// Unbought dice lie in a loose pile on the card: later dice sit a little higher, on top of earlier ones.
+function makeHeap(n){
+  return Array.from({length:n}, (_, i) => ({
+    off:[(Math.random() - .5) * .42, (Math.random() - .5) * .34 + .04],
+    q:randQuat(), h: i < 3 ? Math.random() * .05 : .12 + Math.random() * .12,
+  }));
+}
+
+/* ---- symbols on rolled dice ---- */
+const tokensOf = d => d.faces[d.face].map((sym, i) => ({die:d, i, sym})).filter(t => !d.spent[t.i]);
+const selTokens = () => S.selection.map(dieById).filter(d => d && d.loc === 'tray').flatMap(tokensOf);
+function fits(t, need, charId){
+  if (t.sym === 'magic') return need !== 'special' || !charById(charId).ko;
+  if (need === 'special') return t.sym === 'special' && t.die.owner === charId;
+  return t.sym === need;
+}
+const fitting = (need, charId) => selTokens().filter(t => fits(t, need, charId));
+const pick = (ts, n) => [...ts].sort((a, b) => (a.sym === 'magic') - (b.sym === 'magic')).slice(0, n);
+const unusedCount = () => S.tray.reduce((n, id) => n + tokensOf(dieById(id)).length, 0);
+
+const playing = () => S.phase === 'player' && !S.busy && !S.over;
+const incomingAt = id => S.enemies.reduce((n, e) => n + e.swords.filter(t => t === id).length, 0);
+const incomingLeft = c => incomingAt(c.id) - (S.blocks[c.id] || 0);
+const canAttack = e => playing() && !S.mode && !e.dead && fitting('sword').length > 0;
+const canBlock = c => playing() && !S.mode && !c.ko && incomingLeft(c) > 0 && fitting('shield').length > 0;
+const canBuy = c => playing() && !S.mode && !c.ko && c.unbought > 0 && fitting('speech').length >= S.cfg.cost;
+const canUpgrade = () => playing() && !S.mode && fitting('speech').length >= S.drawSize;
+const canAbility = c => playing() && !S.mode && !c.ko && fitting('special', c.id).length > 0 && CLASSES[c.cls].ability.usable();
+const rerollTargets = srcId => S.tray.map(dieById).filter(d => d.id !== srcId && d.spent.every(s => !s));
+const canMagicReroll = () => { const ts = selTokens(); return playing() && !S.mode && ts.length === 1 && ts[0].sym === 'magic' && rerollTargets(ts[0].die.id).length > 0; };
+const modeAbility = () => S.mode && S.mode.type === 'ability' ? CLASSES[charById(S.mode.charId).cls].ability : null;
+
+/* ---- spending ---- */
+function spendTokens(ts, opts){
+  ts.forEach(t => { t.die.spent[t.i] = true; });
+  const done = S.tray.map(dieById).filter(d => d.spent.length && d.spent.every(Boolean));
+  return flyAfter(done.map(d => 'd:' + d.id), () => {
+    done.forEach(d => { d.loc = 'used'; d.pileOff = pileOff(); });
+    S.tray = S.tray.filter(id => dieById(id).loc === 'tray');
+    S.selection = S.selection.filter(id => S.tray.includes(id) && tokensOf(dieById(id)).length);
+  }, opts);
+}
+
+function damageEnemy(e, n, ignoreShields){
+  let blocked = 0;
+  if (!ignoreShields) { blocked = Math.min(n, e.shields); e.shields -= blocked; }
+  const dealt = Math.min(n - blocked, e.hp);
+  e.hp -= dealt;
+  S.stats.dealt += dealt;
+  if (e.hp <= 0 && !e.dead) { e.dead = true; log(`${e.name} is defeated.`); }
+  return {blocked, dealt};
+}
+
+function attack(e){
+  const ts = fitting('sword');
+  const r = damageEnemy(e, ts.length, false);
+  log(`${plural(ts.length, 'sword')} at ${e.name}: ${r.dealt} damage${r.blocked ? `, ${r.blocked} blocked` : ''}.`);
+  spendTokens(ts);
+}
+function block(c){
+  const ts = pick(fitting('shield'), incomingLeft(c));
+  S.blocks[c.id] = (S.blocks[c.id] || 0) + ts.length;
+  log(`${plural(ts.length, 'shield')} on ${c.name}.`);
+  spendTokens(ts);
+}
+function buy(c){
+  const ts = pick(fitting('speech'), S.cfg.cost);
+  const key = `c:${c.id}:${c.unbought - 1}`;
+  const cv = visuals.get(key);
+  const from = cv ? {x:cv.x, y:cv.y, size:cv.size, q:cv.q} : null;
+  const d = addDie(c.id, CLASSES[c.cls].faces, 8, 'used');
+  d.face = rand(8);
+  c.unbought--;
+  S.stats.bought++;
+  log(`Bought a ${c.name} die.`);
+  if (c.downed && c.unbought === 0) knockOut(c);
+  spendTokens(ts, {noGhost:[key]});
+  const v = visuals.get('d:' + d.id);
+  if (v && from) animate(v, {type:'fly', from, q0:from.q, axis:randAxis(), A:1.6, H:.8, dur:620});
+}
+function upgrade(){
+  const cost = S.drawSize;
+  S.drawSize++;
+  S.stats.upgrades++;
+  log(`Draw is now ${S.drawSize}.`);
+  spendTokens(pick(fitting('speech'), cost));
+}
+async function useAbility(c){
+  const ab = CLASSES[c.cls].ability;
+  const tok = pick(fitting('special', c.id), 1)[0];
+  if (ab.target === 'none') {
+    const g = gen;
+    S.busy = true;
+    spendTokens([tok]);
+    await ab.run({c});
+    if (g !== gen) return;
+    S.busy = false; render();
+  } else {
+    S.mode = {type:'ability', charId:c.id, dieId:tok.die.id, i:tok.i};
+    S.selection = [tok.die.id];
+    render();
+  }
+}
+async function resolveAbilityTarget(target){
+  const c = charById(S.mode.charId), ab = CLASSES[c.cls].ability;
+  const d = dieById(S.mode.dieId), i = S.mode.i;
+  S.mode = null;
+  if (!d || d.loc !== 'tray' || d.spent[i]) { render(); return; }
+  await ab.run(ab.target === 'enemy' ? {c, enemy:target} : {c, ally:target});
+  spendTokens([{die:d, i, sym:d.faces[d.face][i]}]);
+}
+async function doReroll(tgt){
+  const src = dieById(S.mode.dieId);
+  const tok = tokensOf(src)[0];
+  S.mode = null;
+  S.selection = S.selection.filter(id => id !== tgt.id && id !== src.id);
+  tgt.face = rand(tgt.sides);
+  tgt.spent = tgt.faces[tgt.face].map(() => false);
+  const g = gen;
+  S.busy = true;
+  spendTokens([tok]);
+  await hop(visuals.get('d:' + tgt.id));
+  if (g !== gen) return;
+  log(`Rerolled a die.`);
+  S.busy = false; render();
+}
+
+function clickDie(id){
+  const d = dieById(id);
+  if (!d || d.loc !== 'tray') return;
+  if (S.mode && S.mode.type === 'reroll') {
+    if (id === S.mode.dieId) { S.mode = null; S.selection = []; render(); }
+    else if (d.spent.every(s => !s)) doReroll(d);
+    return;
+  }
+  if (S.mode) return;
+  if (S.selection.includes(id)) { S.selection = S.selection.filter(x => x !== id); render(); return; }
+  const left = tokensOf(d);
+  if (left.length === 1 && left[0].sym === 'reroll') {
+    if (rerollTargets(id).length) { S.selection = [id]; S.mode = {type:'reroll', dieId:id}; render(); }
+    return;
+  }
+  S.selection.push(id);
+  render();
+}
+function cardFallback(c){
+  if (S.mode && S.mode.type === 'ability') {
+    const ab = modeAbility();
+    if (ab.target === 'ally' && ab.canTarget(c)) resolveAbilityTarget(c);
+    return;
+  }
+  if (canBlock(c)) block(c);
+}
+
+/* ---- round flow ---- */
+async function startRound(){
+  const g = gen;
+  S.busy = true; S.round++; S.phase = 'enemy';
+  S.blocks = {}; S.selection = []; S.mode = null;
+  const living = livingParty();
+  S.enemies.forEach(e => {
+    e.swords = []; e.shields = 0;
+    if (e.dead) { e.rolls = null; return; }
+    e.rolls = Array.from({length:e.nDice}, () => rand(e.faces.length));
+    e.rolls.forEach(r => {
+      const f = e.faces[r];
+      e.shields += f.filter(s => s === 'shield').length;
+      const n = f.filter(s => s === 'sword').length;
+      if (n) { const t = living[rand(living.length)].id; for (let i = 0; i < n; i++) e.swords.push(t); }
+    });
+  });
+  render();
+  let k = 0;
+  await Promise.all(aliveEnemies().flatMap(e => e.rolls.map((_, j) => hop(visuals.get(`e:${e.id}:${j}`), (k++) * 90))));
+  if (g !== gen) return;
+  S.phase = 'player';
+  await drawDice(S.drawSize);
+  if (g !== gen) return;
+  S.busy = false;
+  render();
+}
+
+function takeFromBag(){
+  const bag = S.dice.filter(d => d.loc === 'bag');
+  const d = bag[rand(bag.length)];
+  d.loc = 'tray';
+  d.face = rand(d.sides);
+  d.spent = d.faces[d.face].map(() => false);
+  S.tray.push(d.id);
+  return d;
+}
+async function drawDice(n){
+  const g = gen;
+  let batch = [];
+  const throwBatch = async () => { render(); await Promise.all(batch.map((d, j) => throwDie(d, j))); batch = []; };
+  for (let i = 0; i < n; i++) {
+    if (!S.dice.some(d => d.loc === 'bag')) {
+      if (!S.dice.some(d => d.loc === 'used')) break;
+      if (batch.length) { await throwBatch(); if (g !== gen) return; }
+      await refill();
+      if (g !== gen) return;
+    }
+    batch.push(takeFromBag());
+  }
+  if (batch.length) await throwBatch();
+}
+function refill(){
+  const used = S.dice.filter(d => d.loc === 'used');
+  log('The discard pile goes back in the cup.');
+  return flyAfter(used.map(d => 'd:' + d.id), () => used.forEach(d => d.loc = 'bag'), {stagger:35, dur:420});
+}
+
+async function endTurn(){
+  if (!playing() || S.mode) return;
+  const g = gen;
+  const unused = unusedCount();
+  if (unused) log(`${plural(unused, 'unused symbol')} lost.`);
+  S.busy = true; S.phase = 'attack';
+  const tray = S.tray.map(dieById);
+  await flyAfter(tray.map(d => 'd:' + d.id), () => {
+    tray.forEach(d => { d.loc = 'used'; d.pileOff = pileOff(); });
+    S.tray = []; S.selection = [];
+  }, {stagger:60});
+  if (g !== gen) return;
+  await sleep(150);
+  const blocks = {...S.blocks};
+  outer:
+  for (const e of S.enemies) {
+    for (const targetId of e.swords) {
+      let t = charById(targetId);
+      if (t.ko) {
+        const living = livingParty();
+        if (!living.length) break outer;
+        t = living[rand(living.length)];
+      }
+      S.resolving = {enemyId:e.id, targetId:t.id};
+      render();
+      await sleep(380);
+      if (g !== gen) return;
+      if ((blocks[t.id] || 0) > 0) {
+        blocks[t.id]--;
+        log(`${e.name} hits ${t.name}: blocked.`);
+        render();
+        await sleep(300);
+      } else {
+        await hit(t, e);
+      }
+      if (g !== gen) return;
+      if (!livingParty().length) break outer;
+    }
+  }
+  S.resolving = null;
+  if (!livingParty().length) return finish('loss');
+  if (!aliveEnemies().length) return S.wave === 1 && S.cfg.bossDice > 0 ? nextWave() : finish('win');
+  await startRound();
+}
+
+async function hit(c, e){
+  const g = gen;
+  S.stats.hits++;
+  if (c.downed) {
+    c.unbought = Math.max(0, c.unbought - 1);
+    log(`${e.name} hits ${c.name}, who is down: a die is knocked off their card.`);
+    if (c.unbought === 0) knockOut(c);
+    render();
+    await sleep(500);
+    return;
+  }
+  const sides = HEALTH_SIZES[c.hpIdx];
+  c.hface = rand(sides);
+  const shrink = c.hface < SHRINK_FACES;
+  render();
+  await hop(visuals.get('h:' + c.id));
+  if (g !== gen) return;
+  if (!shrink) log(`${e.name} hits ${c.name}: no damage.`);
+  else if (c.hpIdx < HEALTH_SIZES.length - 1) {
+    c.hpIdx++;
+    c.hface = blankFace(HEALTH_SIZES[c.hpIdx]);
+    log(`${e.name} hits ${c.name}: the health die drops to a d${HEALTH_SIZES[c.hpIdx]}.`);
+  } else {
+    c.downed = true;
+    log(`${e.name} hits ${c.name}: knockout result, ${c.name} is down.`);
+    if (c.unbought === 0) knockOut(c);
+  }
+  render();
+  await sleep(450);
+}
+
+function knockOut(c){
+  c.ko = true;
+  S.dice.filter(d => d.owner === c.id && (d.loc === 'used' || d.loc === 'tray')).forEach(d => {
+    const v = visuals.get('d:' + d.id);
+    if (v) ghost(v);
+    d.loc = 'removed';
+  });
+  S.dice.filter(d => d.owner === c.id).forEach(d => d.loc = 'removed');
+  S.tray = S.tray.filter(id => dieById(id).loc === 'tray');
+  S.selection = S.selection.filter(id => S.tray.includes(id));
+  log(`${c.name} is knocked out, and their dice leave the fight.`);
+}
+
+function finish(result){
+  S.over = {result}; S.phase = 'over'; S.busy = false;
+  log(result === 'win' ? 'You won.' : 'The party was knocked out.');
+  render();
+}
+
+/* ================= Rendering (DOM) ================= */
+let noGhostNext = null;
+function render(opts = {}){
+  if (!S) return;
+  const phase = S.over ? (S.over.result === 'win' ? 'won' : 'lost') : {ready:'ready', enemy:'enemies roll', player:'your turn', attack:'enemies attack', wave:'next wave'}[S.phase];
+  document.getElementById('top').innerHTML = S.round ? `<span>Wave ${S.wave}</span><span>Round ${S.round}</span><span>${phase}</span>` : '';
+  document.getElementById('page').classList.toggle('busy', S.busy);
+
+  const mAb = modeAbility();
+  document.getElementById('enemies').innerHTML = S.enemies.map(e => {
+    const target = mAb && mAb.target === 'enemy' && !e.dead && playing();
+    let intent = '';
+    const rolledShields = e.rolls ? e.rolls.some(r => e.faces[r].includes('shield')) : false;
+    if (!e.rolls) intent = e.dead ? 'defeated' : '';
+    else {
+      const tally = {};
+      e.swords.forEach(t => tally[t] = (tally[t] || 0) + 1);
+      const parts = [];
+      if (e.swords.length) parts.push(`<span class="attack">${icon('sword')} ${Object.entries(tally).map(([t, n]) => charById(t).name + (n > 1 ? ` ×${n}` : '')).join(', ')}</span>`);
+      if (rolledShields) parts.push(`<span>${icon('shield')} ${e.shields ? (e.boss ? `${e.shields} guarding` : 'guarding') : 'guard used'}</span>`);
+      intent = parts.length ? parts.join(' ') : `<span class="idle">${icon('circle-slash')} no action</span>`;
+    }
+    const cls = (e.dead ? ' dead' : '') + (canAttack(e) ? ' can-hit' : '') + (target ? ' can-target' : '') + (S.resolving && S.resolving.enemyId === e.id ? ' attacking' : '');
+    const spots = Array.from({length:e.nDice}, (_, j) => `<div class="spot" data-anchor="e:${e.id}:${j}"></div>`).join('');
+    return `<div class="enemy${e.boss ? ' boss' : ''}${cls}" data-act="enemy" data-id="${e.id}">
+      <div class="spots">${spots}</div>
+      <div><div class="e-name">${e.name}</div><div class="e-hp">${e.hp} / ${e.maxHp}</div><div class="e-intent">${intent}</div></div>
+    </div>`;
+  }).join('');
+
+  document.getElementById('party').innerHTML = S.party.map(c => {
+    const k = CLASSES[c.cls], ab = k.ability;
+    const inc = incomingAt(c.id), blk = S.blocks[c.id] || 0;
+    const allyT = mAb && mAb.target === 'ally' && mAb.canTarget(c) && playing();
+    let n = 0;
+    const groups = [];
+    S.enemies.forEach(e => e.swords.forEach(t => {
+      if (t !== c.id) return;
+      const blocked = n++ < blk, last = groups[groups.length - 1];
+      if (last && last.e === e && last.blocked === blocked) last.n++; else groups.push({e, blocked, n:1});
+    }));
+    const threats = groups.map(g => {
+      const now = !g.blocked && S.resolving && S.resolving.enemyId === g.e.id && S.resolving.targetId === c.id;
+      return `<span class="threat${g.blocked ? ' blocked' : ''}${now ? ' now' : ''}">${icon(g.blocked ? 'shield' : 'sword')} ${g.e.name}${g.n > 1 ? ` ×${g.n}` : ''}</span>`;
+    }).join('');
+    const hl = c.ko ? 'out' : c.downed ? 'down' : `${icon('heart')} d${HEALTH_SIZES[c.hpIdx]}`;
+    const cls = (canBlock(c) ? ' can-block' : '') + (allyT ? ' can-target' : '') + (S.resolving && S.resolving.targetId === c.id ? ' hit' : '');
+    return `<div class="member${c.ko ? ' ko' : ''}">
+      <div class="cardcol">
+        <div class="threats">${c.ko ? '' : threats}</div>
+        <div class="card${cls}" style="--c:${k.color}" data-act="card" data-id="${c.id}">
+          <div class="card-top"><span class="card-name">${c.name}</span><span class="card-lv">lv ${c.level}</span></div>
+          <div class="card-dice${canBuy(c) ? ' can-buy' : ''}" data-act="buy" data-id="${c.id}" data-anchor="heap:${c.id}">${c.ko ? '<span class="downed">knocked out</span>' : c.downed ? '<span class="downed">down</span>' : ''}</div>
+          <div class="card-ability${canAbility(c) ? ' can-ability' : ''}" data-act="ability" data-id="${c.id}"><b>${ab.name}.</b> ${ab.text}</div>
+        </div>
+      </div>
+      <div class="hwrap"><div class="hspot${c.ko || c.downed ? ' empty' : ''}" data-anchor="h:${c.id}"></div><span class="hlabel">${hl}</span></div>
+    </div>`;
+  }).join('');
+
+  const tray = document.getElementById('tray');
+  if (S.phase === 'ready') {
+    tray.innerHTML = `<button type="button" class="btn main big" data-act="start">Start fight</button>`;
+  } else if (S.phase === 'wave') {
+    tray.innerHTML = `<div class="result"><p><b>Wave 2.</b> A monster arrives.</p><button type="button" class="btn main big" data-act="start">Continue</button></div>`;
+  } else if (S.over) {
+    const st = S.stats;
+    tray.innerHTML = `<div class="result"><p><b>${S.over.result === 'win' ? 'You won' : `The party was knocked out in wave ${S.wave}`}</b>, ${plural(S.round, 'round')} in total.</p>
+      <p class="stats">${st.dealt} damage dealt, ${plural(st.hits, 'hit')} taken, ${plural(st.bought, 'die', 'dice')} bought, draw ${S.drawSize}</p>
+      <button type="button" class="btn main" data-act="restart">Play again</button></div>`;
+  } else {
+    const rr = S.mode && S.mode.type === 'reroll';
+    tray.innerHTML = S.tray.map(id => {
+      const d = dieById(id);
+      const cls = (S.selection.includes(id) && !rr ? ' sel' : '') + (rr && id === S.mode.dieId ? ' src' : '') + (rr && id !== S.mode.dieId && d.spent.every(s => !s) ? ' rr' : '');
+      return `<button type="button" class="slot${cls}" data-act="die" data-id="${id}" data-anchor="slot:${id}" aria-label="${d.faces[d.face].join(' and ') || 'blank'}"></button>`;
+    }).join('');
+  }
+
+  const bag = S.dice.filter(d => d.loc === 'bag').length, used = S.dice.filter(d => d.loc === 'used').length;
+  const cup = document.getElementById('cup');
+  cup.classList.toggle('can-upgrade', canUpgrade());
+  document.getElementById('cup-label').textContent = canUpgrade() ? `draw ${S.drawSize} → ${S.drawSize + 1}` : `${bag} in cup · draw ${S.drawSize}`;
+  document.getElementById('discard-label').textContent = used ? `discard · ${used}` : 'discard';
+
+  document.getElementById('hint').textContent = hintText();
+  document.getElementById('btns').innerHTML = S.over || S.phase === 'ready' || S.phase === 'wave' ? '' :
+    (canMagicReroll() ? `<button type="button" class="btn" data-act="magic-reroll">Reroll with magic</button>` : '') +
+    ((S.mode || S.selection.length) && playing() ? `<button type="button" class="btn" data-act="clear">${S.mode ? 'Cancel' : 'Clear'}</button>` : '') +
+    `<button type="button" class="btn main" data-act="endturn" ${playing() && !S.mode ? '' : 'disabled'}>End turn</button>`;
+
+  document.getElementById('log').innerHTML = S.log.slice().reverse().map(l => `<div>${l.round}. ${l.text}</div>`).join('');
+
+  indexAnchors();
+  noGhostNext = opts.noGhost ? new Set(opts.noGhost) : null;
+  sync(opts.quiet);
+}
+
+function hintText(){
+  if (S.over || S.phase === 'ready' || S.phase === 'wave') return '';
+  if (S.phase !== 'player' || S.busy) { const l = S.log[S.log.length - 1]; return S.phase === 'enemy' && S.round && (!l || l.round !== S.round) ? 'Enemies roll.' : (l ? l.text : ''); }
+  if (S.mode && S.mode.type === 'reroll') return 'Click a die to reroll it.';
+  if (S.mode && S.mode.type === 'ability') return modeAbility().target === 'enemy' ? 'Pick an enemy.' : 'Pick an ally to mend.';
+  const ts = selTokens();
+  if (!ts.length) return unusedCount() ? 'Pick dice, then what to use them on.' : 'All dice used.';
+  const counts = {};
+  ts.forEach(t => counts[t.sym] = (counts[t.sym] || 0) + 1);
+  const have = Object.entries(counts).map(([s, n]) => `${n} ${s}`).join(', ');
+  const opts = [];
+  if (S.enemies.some(canAttack)) opts.push('hit an enemy');
+  if (S.party.some(canBlock)) opts.push('guard a targeted ally');
+  if (S.party.some(canBuy)) opts.push('buy a die from a card');
+  if (canUpgrade()) opts.push('grow your draw at the cup');
+  if (S.party.some(canAbility)) opts.push('use an ability');
+  if (canMagicReroll()) opts.push('reroll a die');
+  if (!opts.length) {
+    const sp = fitting('speech').length;
+    if (sp && sp < S.cfg.cost) return `${have}. A die costs ${S.cfg.cost} speech.`;
+    return `${have}. Nothing to use that on.`;
+  }
+  return `${have}: ${opts.join(', ')}.`;
+}
+
+/* ================= 3D dice ================= */
+const add = (a, b) => [a[0]+b[0], a[1]+b[1], a[2]+b[2]];
+const sub = (a, b) => [a[0]-b[0], a[1]-b[1], a[2]-b[2]];
+const mul = (a, s) => [a[0]*s, a[1]*s, a[2]*s];
+const dot = (a, b) => a[0]*b[0] + a[1]*b[1] + a[2]*b[2];
+const cross = (a, b) => [a[1]*b[2]-a[2]*b[1], a[2]*b[0]-a[0]*b[2], a[0]*b[1]-a[1]*b[0]];
+const norm = a => mul(a, 1 / Math.hypot(a[0], a[1], a[2]));
+const lerp = (a, b, t) => a + (b - a) * t;
+function qAxis(ax, ang){ const n = norm(ax), s = Math.sin(ang / 2); return [n[0]*s, n[1]*s, n[2]*s, Math.cos(ang / 2)]; }
+function qMul(a, b){ const [ax,ay,az,aw] = a, [bx,by,bz,bw] = b;
+  return [aw*bx+ax*bw+ay*bz-az*by, aw*by-ax*bz+ay*bw+az*bx, aw*bz+ax*by-ay*bx+az*bw, aw*bw-ax*bx-ay*by-az*bz]; }
+function qRot(q, v){ const u = [q[0], q[1], q[2]]; const t = mul(cross(u, v), 2); return add(add(v, mul(t, q[3])), cross(u, t)); }
+function qSlerp(a, b, t){
+  let d = a[0]*b[0]+a[1]*b[1]+a[2]*b[2]+a[3]*b[3];
+  if (d < 0) { b = b.map(x => -x); d = -d; }
+  if (d > .9995) { const r = a.map((x, i) => x + (b[i] - x) * t); const l = Math.hypot(...r); return r.map(x => x / l); }
+  const th = Math.acos(d), s = Math.sin(th), wa = Math.sin((1 - t) * th) / s, wb = Math.sin(t * th) / s;
+  return a.map((x, i) => x * wa + b[i] * wb);
+}
+function qFromRows(u, v, n){
+  const m00=u[0], m01=u[1], m02=u[2], m10=v[0], m11=v[1], m12=v[2], m20=n[0], m21=n[1], m22=n[2];
+  const tr = m00 + m11 + m22; let x, y, z, w, s;
+  if (tr > 0) { s = Math.sqrt(tr + 1) * 2; w = s / 4; x = (m21 - m12) / s; y = (m02 - m20) / s; z = (m10 - m01) / s; }
+  else if (m00 > m11 && m00 > m22) { s = Math.sqrt(1 + m00 - m11 - m22) * 2; w = (m21 - m12) / s; x = s / 4; y = (m01 + m10) / s; z = (m02 + m20) / s; }
+  else if (m11 > m22) { s = Math.sqrt(1 + m11 - m00 - m22) * 2; w = (m02 - m20) / s; x = (m01 + m10) / s; y = s / 4; z = (m12 + m21) / s; }
+  else { s = Math.sqrt(1 + m22 - m00 - m11) * 2; w = (m10 - m01) / s; x = (m02 + m20) / s; y = (m12 + m21) / s; z = s / 4; }
+  return [x, y, z, w];
+}
+function faceFrom(poly, up, r){
+  const c = mul(poly.reduce(add, [0,0,0]), 1 / poly.length), n = norm(c);
+  const v = norm(sub(up, c)), u = cross(v, n);
+  return {poly, c, n, u, v, r};
+}
+const SHAPES = (() => {
+  const h = .7;
+  const cube = [[[0,0,1],[0,1,0]],[[0,0,-1],[0,1,0]],[[1,0,0],[0,1,0]],[[-1,0,0],[0,1,0]],[[0,1,0],[0,0,-1]],[[0,-1,0],[0,0,1]]].map(([n, v]) => {
+    const u = cross(v, n), c = mul(n, h);
+    const poly = [[-1,-1],[1,-1],[1,1],[-1,1]].map(([a, b]) => add(c, add(mul(u, a*h), mul(v, b*h))));
+    return {poly, c, n, u, v, r:h*.64};
+  });
+  const r8 = 1.05, octa = [];
+  for (const sx of [1,-1]) for (const sy of [1,-1]) for (const sz of [1,-1]) {
+    const p = [[sx*r8,0,0],[0,sy*r8,0],[0,0,sz*r8]];
+    octa.push(faceFrom(p, p[1], .36));
+  }
+  const T = [[1,1,1],[1,-1,-1],[-1,1,-1],[-1,-1,1]].map(p => mul(norm(p), 1.15));
+  const tetra = T.map((_, k) => { const p = T.filter((_, j) => j !== k); return faceFrom(p, p[0], .4); });
+  return {d6:{faces:cube, tilt:-.42}, d8:{faces:octa, tilt:-.16}, d4:{faces:tetra, tilt:-.12}};
+})();
+const LIGHT = norm([-.35, .55, .8]);
+function restQuat(shape, i, yaw){
+  const f = SHAPES[shape].faces[i];
+  return qMul(qAxis([1,0,0], SHAPES[shape].tilt), qMul(qAxis([0,0,1], yaw), qFromRows(f.u, f.v, f.n)));
+}
+const randAxis = () => norm([Math.random() - .5, Math.random() - .5, (Math.random() - .5) * .4]);
+
+const PAL = { base:{body:'#f5f1e6'}, enemy:{body:'#40444d', ink:'#f3f3f3'}, boss:{body:'#6b2622', ink:'#fbe9e6'}, health:{body:'#f4d9d5'} };
+for (const k in CLASSES) PAL[k] = {body:CLASSES[k].body};
+const SZ = {tray:30, pile:19, cup:14, enemy:19, health:26, card:20};
+
+const canvas = document.getElementById('dice3d');
+const ctx = canvas.getContext('2d');
+let dpr = 1, dirty = true;
+const visuals = new Map();
+let ghosts = [];
+const pendingAnims = new Set();
+let anchors = new Map();
+
+function resize(){
+  dpr = Math.min(window.devicePixelRatio || 1, 2);
+  canvas.width = Math.round(innerWidth * dpr);
+  canvas.height = Math.round(innerHeight * dpr);
+  dirty = true;
+}
+function indexAnchors(){ anchors = new Map(); document.querySelectorAll('[data-anchor]').forEach(el => anchors.set(el.dataset.anchor, el)); }
+function anchorPt(key, off){
+  const el = anchors.get(key);
+  if (!el || !el.isConnected) return null;
+  const r = el.getBoundingClientRect();
+  if (!r.width && !r.height) return null;
+  return {x: r.left + r.width / 2 + (off ? off[0] * r.width : 0), y: r.top + r.height / 2 + (off ? off[1] * r.height : 0)};
+}
+function resetVisuals(){ pendingAnims.forEach(r => r()); pendingAnims.clear(); visuals.clear(); ghosts = []; dirty = true; }
+
+function specFor(key){
+  const [type, a, b] = key.split(':');
+  if (type === 'd') {
+    const d = dieById(+a);
+    if (!d) return null;
+    const base = {shape: d.sides === 8 ? 'd8' : 'd6', faces:d.faces, pal: d.owner === 'base' ? 'base' : d.owner, face:d.face, die:d};
+    if (d.loc === 'tray') return {...base, anchor:'slot:' + d.id, size:SZ.tray, visible:true, yaw:.35};
+    if (d.loc === 'used') return {...base, anchor:'discard', off:d.pileOff, size:SZ.pile, visible:true, yaw:6.3};
+    if (d.loc === 'bag') return {...base, anchor:'cup', off:[0, -.3], size:SZ.cup, visible:false, yaw:.3};
+    return {...base, anchor:null, size:SZ.pile, visible:false, yaw:0};
+  }
+  if (type === 'e') {
+    const e = enemyById(a), j = +b;
+    if (!e || !e.rolls || j >= e.rolls.length) return null;
+    return {shape:'d6', faces:e.faces, pal:e.boss ? 'boss' : 'enemy', face:e.rolls[j], anchor:`e:${a}:${j}`, size:SZ.enemy, visible:true, yaw:.3};
+  }
+  if (type === 'h') {
+    const c = charById(a);
+    if (!c || c.ko || c.downed) return null;
+    const n = HEALTH_SIZES[c.hpIdx];
+    return {shape:'d' + n, faces:HEALTH_FACES[n], pal:'health', face:c.hface, anchor:'h:' + a, size:SZ.health, visible:true, yaw:.25};
+  }
+  if (type === 'c') {
+    const c = charById(a), i = +b;
+    if (!c || c.ko || i >= c.unbought) return null;
+    const hp = c.heap[i];
+    return {shape:'d8', faces:CLASSES[c.cls].faces, pal:c.id, face:0, anchor:'heap:' + a, off:hp.off, q:hp.q, h:hp.h, blank:true, size:SZ.card, visible:true, yaw:0};
+  }
+  return null;
+}
+function allKeys(){
+  const keys = S.dice.map(d => 'd:' + d.id);
+  S.enemies.forEach(e => { for (let j = 0; j < e.nDice; j++) keys.push(`e:${e.id}:${j}`); });
+  S.party.forEach(c => { keys.push('h:' + c.id); for (let i = 0; i < c.level; i++) keys.push(`c:${c.id}:${i}`); });
+  return keys;
+}
+function setFace(v, face){
+  v.face = face;
+  v.blank = !!v.spec.blank;
+  v.qRest = v.spec.q || restQuat(v.shape, face, (Math.random() - .5) * v.spec.yaw);
+}
+function sync(quiet){
+  for (const key of allKeys()) {
+    const spec = specFor(key);
+    let v = visuals.get(key);
+    if (!spec) {
+      if (v) { if (v.spec.visible && !(noGhostNext && noGhostNext.has(key))) ghost(v); visuals.delete(key); }
+      continue;
+    }
+    if (!v) {
+      const p = spec.anchor ? anchorPt(spec.anchor, spec.off) : null;
+      v = {key, shape:spec.shape, faces:spec.faces, pal:spec.pal, spec, x:p ? p.x : 0, y:p ? p.y : 0, size:spec.size, lift:0, anim:null};
+      setFace(v, spec.face);
+      v.q = v.qRest;
+      visuals.set(key, v);
+      if (!quiet && key[0] !== 'd') animate(v, {type:'grow', dur:320});
+      continue;
+    }
+    const prevLoc = v.spec.anchor;
+    v.spec = spec;
+    if (v.shape !== spec.shape) {
+      v.shape = spec.shape; v.faces = spec.faces;
+      setFace(v, spec.face); v.q = v.qRest;
+      if (!quiet) animate(v, {type:'pop', dur:380});
+    } else if (v.face !== spec.face || prevLoc !== spec.anchor) {
+      setFace(v, spec.face);
+      if (!v.anim) v.q = v.qRest;
+    }
+  }
+  // Visuals whose owner is gone (e.g. the previous wave's enemies) fade out.
+  const live = new Set(allKeys());
+  for (const [key, v] of visuals) if (!live.has(key)) { if (v.spec.visible) ghost(v); visuals.delete(key); }
+  dirty = true;
+}
+function animate(v, a){
+  return new Promise(res => {
+    if (!v) return res();
+    if (v.anim) v.anim.resolve();
+    a.dur = reduced() ? Math.min(a.dur, 90) : a.dur;
+    a.t0 = performance.now() + (reduced() ? 0 : (a.delay || 0));
+    a.resolve = () => { pendingAnims.delete(a.resolve); res(); };
+    pendingAnims.add(a.resolve);
+    v.anim = a;
+    dirty = true;
+  });
+}
+function hop(v, delay = 0){ return animate(v, {type:'hop', axis:randAxis(), A:Math.PI * 2 * (1 + Math.random() * .8), H:.9, dur:720, delay}); }
+function throwDie(d, j){
+  const v = visuals.get('d:' + d.id);
+  const from = anchorPt('cup', [0, -.3]);
+  const to = anchorPt('slot:' + d.id);
+  if (!v || !from || !to) return Promise.resolve();
+  const axis = norm(add([to.y - from.y, to.x - from.x, 0].map(x => x || .01), mul(randAxis(), 60)));
+  return animate(v, {type:'throw', from:{x:from.x, y:from.y, size:SZ.cup}, axis, A:Math.PI * 2 * (2 + Math.random() * 1.5), H:1.1, dur:950 + Math.random() * 250, delay:j * 110, hideBefore:true});
+}
+function flyAfter(keys, mutate, opts = {}){
+  const froms = keys.map(k => { const v = visuals.get(k); return v ? {k, x:v.x, y:v.y, size:v.size, q:v.q} : null; }).filter(Boolean);
+  mutate();
+  render(opts);
+  return Promise.all(froms.map((f, i) => animate(visuals.get(f.k), {type:'fly', from:f, q0:f.q, axis:randAxis(), A:1.4, H:.55, dur:opts.dur || 480, delay:i * (opts.stagger || 0)})));
+}
+function ghost(v){
+  const g = {...v, spec:{anchor:null, visible:false, size:v.size}, anim:null};
+  ghosts.push(g);
+  animate(g, {type:'vanish', dur:480}).then(() => { ghosts = ghosts.filter(x => x !== g); dirty = true; });
+}
+
+const easeOut = t => 1 - Math.pow(1 - t, 3);
+const easeInOut = t => t < .5 ? 2*t*t : 1 - Math.pow(-2*t + 2, 2) / 2;
+const easeBack = t => 1 + 2.7 * Math.pow(t - 1, 3) + 1.7 * Math.pow(t - 1, 2);
+function applyAnim(v, now, base){
+  const a = v.anim;
+  let t = (now - a.t0) / a.dur;
+  if (t < 0) { if (a.hideBefore) return {hidden:true}; t = 0; }
+  if (t >= 1) { v.anim = null; a.resolve(); return {...base, h:0, scale:1, alpha:1, done:true}; }
+  const st = {...base, h:0, scale:1, alpha:1};
+  switch (a.type) {
+    case 'throw': {
+      const e = easeOut(t);
+      st.x = lerp(a.from.x, base.x, e); st.y = lerp(a.from.y, base.y, e); st.size = lerp(a.from.size, base.size, Math.min(1, t * 3));
+      st.h = a.H * Math.abs(Math.sin(Math.PI * 2.6 * t)) * Math.pow(1 - t, 1.7);
+      st.q = qMul(qAxis(a.axis, a.A * Math.pow(1 - t, 2.2)), base.q);
+      break;
+    }
+    case 'hop':
+      st.h = a.H * Math.abs(Math.sin(Math.PI * 1.8 * t)) * Math.pow(1 - t, 1.3);
+      st.q = qMul(qAxis(a.axis, a.A * Math.pow(1 - t, 2)), base.q);
+      break;
+    case 'fly': {
+      const e = easeInOut(t);
+      st.x = lerp(a.from.x, base.x, e); st.y = lerp(a.from.y, base.y, e); st.size = lerp(a.from.size, base.size, e);
+      st.h = a.H * Math.sin(Math.PI * t);
+      st.q = qMul(qAxis(a.axis, a.A * Math.sin(Math.PI * e)), qSlerp(a.q0, base.q, e));
+      break;
+    }
+    case 'pop': st.scale = 1 + .35 * Math.sin(Math.PI * t); break;
+    case 'grow': st.scale = Math.max(.01, easeBack(t)); break;
+    case 'vanish':
+      st.y = base.y - 26 * t; st.scale = 1 - .5 * t; st.alpha = 1 - t; st.h = .3 * t;
+      st.q = qMul(qAxis([1, .4, 0], t * 3), base.q);
+      break;
+  }
+  return st;
+}
+
+function frame(now){
+  requestAnimationFrame(frame);
+  if (!dirty) return;
+  dirty = false;
+  const k = innerWidth < 640 ? .82 : 1;
+  const items = [];
+  const step = (v, isGhost) => {
+    let base;
+    if (isGhost) base = {x:v.x, y:v.y, size:v.size, q:v.q};
+    else {
+      const p = v.spec.anchor ? anchorPt(v.spec.anchor, v.spec.off) : null;
+      if (!p && !v.anim) return;
+      base = {x:p ? p.x : v.x, y:p ? p.y : v.y, size:v.spec.size * k, q:v.qRest};
+    }
+    const animating = !!v.anim;
+    const st = v.anim ? applyAnim(v, now, base) : {...base, h:0, scale:1, alpha:1};
+    if (v.anim) dirty = true;
+    if (st.hidden) return;
+    if (!isGhost) {
+      const d = v.spec.die;
+      const want = d && (S.selection.includes(d.id) || (S.mode && S.mode.dieId === d.id)) ? 1 : 0;
+      v.lift += (want - v.lift) * .3;
+      if (Math.abs(want - v.lift) > .01) dirty = true; else v.lift = want;
+      v.x = st.x; v.y = st.y; v.size = st.size; v.q = st.q;
+      if (!v.spec.visible && !(animating && !st.done)) return;
+    }
+    items.push({v, ...st, h:st.h + (isGhost ? 0 : v.lift * .28 + (v.spec.h || 0))});
+  };
+  visuals.forEach(v => step(v, false));
+  ghosts.forEach(g => { if (g.anim) step(g, true); });
+  items.sort((a, b) => (a.h - b.h) || (a.y - b.y));
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.clearRect(0, 0, innerWidth, innerHeight);
+  for (const it of items) drawShadow(it);
+  for (const it of items) drawDie(it);
+}
+
+function drawShadow(it){
+  const S2 = it.size * it.scale * (1 + .3 * it.h);
+  const sx = it.x + 3 + 14 * it.h, sy = it.y + S2 * .45 + 4 + 8 * it.h;
+  ctx.save();
+  ctx.translate(sx, sy); ctx.scale(1, .42);
+  const R = S2 * (1 + .25 * it.h);
+  const g = ctx.createRadialGradient(0, 0, 0, 0, 0, R);
+  g.addColorStop(0, `rgba(40,30,20,${.26 * (1 - .55 * Math.min(1, it.h)) * it.alpha})`);
+  g.addColorStop(1, 'rgba(40,30,20,0)');
+  ctx.fillStyle = g;
+  ctx.beginPath(); ctx.arc(0, 0, R, 0, Math.PI * 2); ctx.fill();
+  ctx.restore();
+}
+function polyPath(pts){ ctx.beginPath(); pts.forEach((p, i) => i ? ctx.lineTo(p[0], p[1]) : ctx.moveTo(p[0], p[1])); ctx.closePath(); }
+function drawDie(it){
+  const {v, q, alpha} = it;
+  const Sz = it.size * it.scale * (1 + .3 * it.h);
+  const x = it.x, y = it.y - it.h * 26;
+  const pal = PAL[v.pal] || PAL.base;
+  const shape = SHAPES[v.shape];
+  const vis = [];
+  shape.faces.forEach((f, i) => { const n = qRot(q, f.n); if (n[2] > .015) vis.push({f, i, n}); });
+  vis.sort((a, b) => a.n[2] - b.n[2]);
+  ctx.lineJoin = 'round';
+  ctx.lineWidth = Math.max(1, Sz * .13);
+  ctx.globalAlpha = alpha;
+  const spent = v.spec && v.spec.die && v.spec.die.loc === 'tray' ? v.spec.die.spent : null;
+  for (const {f, i, n} of vis) {
+    const pts = f.poly.map(p => { const w = qRot(q, p); return [x + Sz * w[0], y - Sz * w[1]]; });
+    polyPath(pts);
+    ctx.fillStyle = ctx.strokeStyle = pal.body;
+    ctx.fill(); ctx.stroke();
+    const syms = v.blank ? [] : (v.faces[i] || []);
+    if (syms.length) {
+      const U = qRot(q, f.u), V = qRot(q, f.v), C = qRot(q, f.c);
+      ctx.save();
+      ctx.setTransform(dpr*Sz*U[0], -dpr*Sz*U[1], -dpr*Sz*V[0], dpr*Sz*V[1], dpr*(x + Sz*C[0]), dpr*(y - Sz*C[1]));
+      const r = syms.length > 1 ? f.r * .62 : f.r;
+      syms.forEach((s, j) => {
+        const ox = syms.length > 1 ? (j - (syms.length - 1) / 2) * r * 1.75 : 0;
+        ctx.globalAlpha = alpha * (spent && i === v.face && spent[j] ? .2 : 1);
+        const img = iconImg(SYM[s].icon, pal.ink || SYM[s].color);
+        if (img && img.complete && img.naturalWidth) ctx.drawImage(img, ox - r, -r, 2 * r, 2 * r);
+        else { ctx.fillStyle = pal.ink || SYM[s].color; ctx.beginPath(); ctx.arc(ox, 0, r * .45, 0, Math.PI * 2); ctx.fill(); }
+      });
+      ctx.restore();
+      ctx.globalAlpha = alpha;
+    }
+    const d = dot(n, LIGHT);
+    polyPath(pts);
+    ctx.fillStyle = ctx.strokeStyle = d > .72 ? `rgba(255,255,255,${(d - .72) * .55})` : `rgba(20,15,10,${Math.min(.42, (.72 - d) * .42)})`;
+    ctx.fill(); ctx.stroke();
+  }
+  ctx.globalAlpha = 1;
+}
+
+/* ================= Input ================= */
+document.addEventListener('click', async e => {
+  const el = e.target.closest('[data-act]');
+  if (!el) return;
+  const act = el.dataset.act, id = el.dataset.id;
+  if (act === 'newfight' || act === 'restart') { const cfg = readSettings(); saveSettings(cfg); newFight(cfg); return; }
+  if (act === 'start') { if (S && (S.phase === 'ready' || S.phase === 'wave')) startRound(); return; }
+  if (!S || !playing()) return;
+  switch (act) {
+    case 'die': clickDie(Number(id)); break;
+    case 'enemy': {
+      const en = enemyById(id);
+      if (S.mode && S.mode.type === 'ability') { if (modeAbility().target === 'enemy' && !en.dead) await resolveAbilityTarget(en); }
+      else if (canAttack(en)) attack(en);
+      break;
+    }
+    case 'buy': { const c = charById(id); if (canBuy(c)) buy(c); else cardFallback(c); break; }
+    case 'ability': { const c = charById(id); if (canAbility(c)) await useAbility(c); else cardFallback(c); break; }
+    case 'card': cardFallback(charById(id)); break;
+    case 'cup': if (canUpgrade()) upgrade(); break;
+    case 'magic-reroll': if (canMagicReroll()) { S.mode = {type:'reroll', dieId:selTokens()[0].die.id}; render(); } break;
+    case 'clear': S.mode = null; S.selection = []; render(); break;
+    case 'endturn': await endTurn(); break;
+  }
+});
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape' && S && playing() && (S.mode || S.selection.length)) { S.mode = null; S.selection = []; render(); }
+});
+addEventListener('resize', () => { resize(); });
+addEventListener('scroll', () => { dirty = true; }, {passive:true});
+document.addEventListener('toggle', () => { dirty = true; }, true);
+
+/* ================= Boot ================= */
+buildIcons();
+loadSettings();
+resize();
+requestAnimationFrame(frame);
+newFight(readSettings());
+window.__game = {get S(){ return S; }};
+</script>
+</body>
+</html>
